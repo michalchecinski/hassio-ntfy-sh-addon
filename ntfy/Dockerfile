@@ -4,11 +4,12 @@ FROM $BUILD_FROM
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install requirements for Home Assistant add-on integration
+# Install requirements
 RUN apk add --no-cache \
-    bashio \
     curl \
-    jq
+    jq \
+    bash \
+    su-exec
 
 # Install ntfy from official Docker image
 COPY --from=binwiederhier/ntfy:latest /usr/bin/ntfy /usr/local/bin/ntfy
@@ -36,9 +37,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 LABEL \
     io.hass.name="ntfy" \
     io.hass.description="Self-hosted notification service" \
-    io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
-    io.hass.version="${BUILD_VERSION}" \
     maintainer="Michal Checinski" \
     org.opencontainers.image.title="ntfy Home Assistant Add-on" \
     org.opencontainers.image.description="Self-hosted notification service for Home Assistant" \

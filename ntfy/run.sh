@@ -1,23 +1,44 @@
-#!/usr/bin/with-contenv bash
+#!/bin/bash
+set -e
 
 # ==============================================================================
-# Home Assistant Community Add-on: ntfy
+# Home Assistant Add-on: ntfy
 # Runs the ntfy notification service
 # ==============================================================================
 
-bashio::log.info "Starting ntfy..."
+echo "[INFO] Starting ntfy..."
+
+# Read configuration from options.json
+OPTIONS_FILE="/data/options.json"
+
+if [ ! -f "$OPTIONS_FILE" ]; then
+    echo "[ERROR] Configuration file not found: $OPTIONS_FILE"
+    exit 1
+fi
+
+# Helper function to get config values
+get_config() {
+    local key="$1"
+    local default="$2"
+    local value=$(jq -r ".$key // empty" "$OPTIONS_FILE" 2>/dev/null)
+    if [ -z "$value" ] || [ "$value" = "null" ]; then
+        echo "$default"
+    else
+        echo "$value"
+    fi
+}
 
 # Get configuration from add-on options
-PORT=$(bashio::config 'port')
-BASE_URL=$(bashio::config 'base_url')
-AUTH_FILE=$(bashio::config 'auth_file')
-AUTH_DEFAULT_ACCESS=$(bashio::config 'auth_default_access')
-CACHE_FILE=$(bashio::config 'cache_file')
-LOG_LEVEL=$(bashio::config 'log_level')
-BEHIND_PROXY=$(bashio::config 'behind_proxy')
-ENABLE_SIGNUP=$(bashio::config 'enable_signup')
-ENABLE_LOGIN=$(bashio::config 'enable_login')
-ENABLE_RESERVATIONS=$(bashio::config 'enable_reservations')
+PORT=$(get_config "port" "8080")
+BASE_URL=$(get_config "base_url" "")
+AUTH_FILE=$(get_config "auth_file" "")
+AUTH_DEFAULT_ACCESS=$(get_config "auth_default_access" "read-write")
+CACHE_FILE=$(get_config "cache_file" "/data/cache.db")
+LOG_LEVEL=$(get_config "log_level" "INFO")
+BEHIND_PROXY=$(get_config "behind_proxy" "false")
+ENABLE_SIGNUP=$(get_config "enable_signup" "false")
+ENABLE_LOGIN=$(get_config "enable_login" "false")
+ENABLE_RESERVATIONS=$(get_config "enable_reservations" "false")
 
 # Create configuration directory
 mkdir -p /data/config
@@ -25,7 +46,7 @@ mkdir -p /data/config
 # Generate ntfy configuration file
 CONFIG_FILE="/data/config/server.yml"
 
-bashio::log.info "Generating ntfy configuration..."
+echo "[INFO] Generating ntfy configuration..."
 
 cat > "${CONFIG_FILE}" <<EOF
 # ntfy server configuration
@@ -33,15 +54,6 @@ cat > "${CONFIG_FILE}" <<EOF
 
 # Listen address and port
 listen-http: ":${PORT}"
-
-# Base URL for the service
-EOF
-
-if [ -n "${BASE_URL}" ]; then
-    echo "base-url: \"${BASE_URL}\"" >> "${CONFIG_FILE}"
-fi
-
-cat >> "${CONFIG_FILE}" <<EOF
 
 # Cache settings
 cache-file: "${CACHE_FILE}"
@@ -51,36 +63,43 @@ cache-duration: "12h"
 log-level: ${LOG_LEVEL,,}
 log-format: text
 
-# Behind proxy settings
+# Authentication settings
+auth-default-access: "${AUTH_DEFAULT_ACCESS}"
+
+# CORS settings for Home Assistant integration
+cors-allowed-origins: ["*"]
+
+# Web app settings
+web-root: disable
+
+# Health check
+enable-metrics: false
 EOF
 
-if [ "${BEHIND_PROXY}" = "true" ]; then
-    cat >> "${CONFIG_FILE}" <<EOF
-behind-proxy: true
-EOF
+# Add optional base URL
+if [ -n "${BASE_URL}" ] && [ "${BASE_URL}" != "" ]; then
+    echo "base-url: \"${BASE_URL}\"" >> "${CONFIG_FILE}"
 fi
 
-cat >> "${CONFIG_FILE}" <<EOF
+# Add optional behind proxy setting
+if [ "${BEHIND_PROXY}" = "true" ]; then
+    echo "behind-proxy: true" >> "${CONFIG_FILE}"
+fi
 
-# Authentication settings
-EOF
-
+# Add optional authentication file
 if [ -n "${AUTH_FILE}" ] && [ "${AUTH_FILE}" != "" ]; then
     echo "auth-file: \"/data/${AUTH_FILE}\"" >> "${CONFIG_FILE}"
-    echo "auth-default-access: \"${AUTH_DEFAULT_ACCESS}\"" >> "${CONFIG_FILE}"
     
     # Create auth file if it doesn't exist
     if [ ! -f "/data/${AUTH_FILE}" ]; then
-        bashio::log.info "Creating authentication file: /data/${AUTH_FILE}"
+        echo "[INFO] Creating authentication file: /data/${AUTH_FILE}"
         touch "/data/${AUTH_FILE}"
         chown ntfy:ntfy "/data/${AUTH_FILE}"
         chmod 600 "/data/${AUTH_FILE}"
     fi
-else
-    echo "auth-default-access: \"${AUTH_DEFAULT_ACCESS}\"" >> "${CONFIG_FILE}"
 fi
 
-# Web UI and signup settings
+# Add optional signup/login settings
 if [ "${ENABLE_SIGNUP}" = "true" ]; then
     echo "enable-signup: true" >> "${CONFIG_FILE}"
 fi
@@ -93,30 +112,17 @@ if [ "${ENABLE_RESERVATIONS}" = "true" ]; then
     echo "enable-reservations: true" >> "${CONFIG_FILE}"
 fi
 
-# CORS settings for Home Assistant integration
-cat >> "${CONFIG_FILE}" <<EOF
-
-# CORS settings
-cors-allowed-origins: ["*"]
-
-# Web app settings
-web-root: disable
-
-# Health check
-enable-metrics: false
-EOF
-
 # Ensure data directory permissions
 chown -R ntfy:ntfy /data
 chmod -R 755 /data
 
 # Log the configuration (without sensitive data)
-bashio::log.info "ntfy configuration:"
-bashio::log.info "Port: ${PORT}"
-bashio::log.info "Log Level: ${LOG_LEVEL}"
-bashio::log.info "Authentication: $([ -n "${AUTH_FILE}" ] && echo "Enabled" || echo "Disabled")"
-bashio::log.info "Behind Proxy: ${BEHIND_PROXY}"
+echo "[INFO] ntfy configuration:"
+echo "[INFO] Port: ${PORT}"
+echo "[INFO] Log Level: ${LOG_LEVEL}"
+echo "[INFO] Authentication: $([ -n "${AUTH_FILE}" ] && echo "Enabled" || echo "Disabled")"
+echo "[INFO] Behind Proxy: ${BEHIND_PROXY}"
 
-# Start ntfy server
-bashio::log.info "Starting ntfy server..."
-exec /usr/local/bin/ntfy serve --config="${CONFIG_FILE}"
+# Start ntfy server as ntfy user
+echo "[INFO] Starting ntfy server..."
+exec su-exec ntfy /usr/local/bin/ntfy serve --config="${CONFIG_FILE}"
