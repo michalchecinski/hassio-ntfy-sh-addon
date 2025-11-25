@@ -8,12 +8,7 @@ LABEL \
     io.hass.type="addon" \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.name="ntfy" \
-    io.hass.description="Self-hosted notification service" \
-    maintainer="Michal Checinski" \
-    org.opencontainers.image.title="ntfy Home Assistant Add-on" \
-    org.opencontainers.image.description="Self-hosted notification service for Home Assistant" \
-    org.opencontainers.image.source="https://github.com/michalchecinski/hassio-ntfy-sh-addon" \
-    org.opencontainers.image.licenses="MIT"
+    org.opencontainers.image.title="ntfy Home Assistant Add-on"
 
 USER root
 RUN apk add --no-cache --update \
